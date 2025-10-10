@@ -212,27 +212,28 @@ def remove_contribution(contribution_upperdir):
 # ------------ The garbage collector for idle containers -------------
 
 def garbage_collector_dumb():
-    print(f"[{datetime.now()}] ---Running Garbage Collector")
-    try:
-        timeout_threshold = datetime.now(timezone.utc) - timedelta(seconds=SESSION_TTL_SECONDS)
+    with app.app_context():
+        print(f"[{datetime.now()}] ---Running Garbage Collector")
+        try:
+            timeout_threshold = datetime.now(timezone.utc) - timedelta(seconds=SESSION_TTL_SECONDS)
 
-        idle_sessions = ActiveSession.query.filter(ActiveSession.last_active < timeout_threshold).all()
+            idle_sessions = ActiveSession.query.filter(ActiveSession.last_active < timeout_threshold).all()
 
-        for session in idle_sessions:
-            print(f"Session for container '{session.container_name}' is idle. Last active: {session.last_active}. Stopping.")
-            try:
-                container = docker_client.containers.get(session.container_name)
-                container.stop(timeout=30) 
-                print(f"Container '{session.container_name}' stopped.")
-            except docker.errors.NotFound:
-                print(f"Container '{session.container_name}' not found. It may have been stopped manually.")
-            
-            db.session.delete(session)
-        db.session.commit()
+            for session in idle_sessions:
+                print(f"Session for container '{session.container_name}' is idle. Last active: {session.last_active}. Stopping.")
+                try:
+                    container = docker_client.containers.get(session.container_name)
+                    container.stop(timeout=30) 
+                    print(f"Container '{session.container_name}' stopped.")
+                except docker.errors.NotFound:
+                    print(f"Container '{session.container_name}' not found. It may have been stopped manually.")
+                
+                db.session.delete(session)
+            db.session.commit()
 
-    except Exception as e:
-        print(f"Error during garbage collection run: {e}")
-        db.session.rollback()
+        except Exception as e:
+            print(f"Error during garbage collection run: {e}")
+            db.session.rollback()
 
         # all_containers = docker_client.containers.list(filters={"status":"running"})
         # for cont in all_containers:
