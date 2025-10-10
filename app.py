@@ -214,7 +214,7 @@ def remove_contribution(contribution_upperdir):
 def garbage_collector_dumb():
     print(f"[{datetime.now()}] ---Running Garbage Collector")
     try:
-        timeout_threshold = datetime.now(timezone.utc) - timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(seconds=SESSION_TTL_SECONDS)
 
         idle_sessions = ActiveSession.query.filter(ActiveSession.last_active < timeout_threshold).all()
 
