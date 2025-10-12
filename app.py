@@ -168,8 +168,12 @@ def create_contributor_session(owner_username, contributor_username, project_nam
     overlay_opts = f"lowerdir={lowerdir},upperdir={upperdir},workdir={workdir}"
 
     mount_options = (
-        f"type=overlay,destination={destination_path_in_container},"
-        f"options={overlay_opts}"
+        f"type=volume,"
+        f"destination={destination_path_in_container},"
+        f"volume-driver=local,"
+        f"volume-opt=type=overlay,"
+        f"volume-opt=device=overlay," 
+        f"volume-opt=o={overlay_opts}"
     )
      
     command = [
