@@ -167,8 +167,9 @@ def create_contributor_session(owner_username, contributor_username, project_nam
      
     mount_options = (
         f"type=overlay,destination={destination_path_in_container},"
-        f"source=overlay,"# 'source' i s just a required placeholder for this mount type not something name
-        f"overlay-options=lowerdir={lowerdir}:upperdir={upperdir}:workdir={workdir}"
+        f"lowerdir={lowerdir},"
+        f"upperdir={upperdir},"
+        f"workdir={workdir}"
     )
      
     command = [
