@@ -164,12 +164,12 @@ def create_contributor_session(owner_username, contributor_username, project_nam
     container_name = f"contrib_{contributor_username}_for_{owner_username}_s_{project_name}_{contribution_id}"
 
     destination_path_in_container = f"/global/{owner_username}/{project_name}"
-     
+    
+    overlay_opts = f"lowerdir={lowerdir},upperdir={upperdir},workdir={workdir}"
+
     mount_options = (
         f"type=overlay,destination={destination_path_in_container},"
-        f"lowerdir={lowerdir},"
-        f"upperdir={upperdir},"
-        f"workdir={workdir}"
+        f"options={overlay_opts}"
     )
      
     command = [
