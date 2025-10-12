@@ -165,7 +165,7 @@ def create_contributor_session(owner_username, contributor_username, project_nam
 
     destination_path_in_container = f"/global/{owner_username}/{project_name}"
     
-    overlay_opts = f"lowerdir={lowerdir},upperdir={upperdir},workdir={workdir}"
+    overlay_opts = f"lowerdir={lowerdir}:upperdir={upperdir}:workdir={workdir}"
 
     mount_options = (
         f"type=volume,"
