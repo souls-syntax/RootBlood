@@ -10,6 +10,7 @@ import pwd, grp
 import shutil
 from datetime import datetime, timezone, timedelta
 import threading
+import sys
 
 # App Configs
 
@@ -131,13 +132,19 @@ def create_guest_session():
 # @Use Python's subprocess.run(command, shell=True) to execute it.
 
 
-def create_contributor_session(owner_username, contributor_username, project_name):
+def create_contributor_session(owner_username, contributor_username, project_name, directory):
 
-    lowerdir = os.path.join(base_playground_path, owner_username, project_name)
+    owner_project_path = os.path.normpath(os.path.join(base_playground_path, owner_username, project_name))
+    
+    if not os.path.abspath(owner_project_path).startswith(os.path.abspath(base_playground_path)):
+        raise ValueError("Attempted path traversal detected.")
+    
+    lowerdir = owner_project_path
     
     contribution_id = uuid.uuid4().hex[:12]
 
-
+    if not os.path.isdir(lowerdir):
+        raise FileNotFoundError(f"Owner's project directory not found at: {lowerdir}")
      
     upperdir = os.path.join(base_playground_path, 'contributions', contribution_id, 'upper')
     os.makedirs(upperdir, exist_ok=True)
@@ -155,12 +162,12 @@ def create_contributor_session(owner_username, contributor_username, project_nam
     db.session.commit()
      
     container_name = f"contrib_{contributor_username}_for_{owner_username}_s_{project_name}_{contribution_id}"
-    
+
     destination_path_in_container = f"/global/{owner_username}/{project_name}"
      
     mount_options = (
         f"type=overlay,destination={destination_path_in_container},"
-        f"source=overlay," # 'source' is just a required placeholder for this mount type
+        f"source=overlay,"# 'source' i s just a required placeholder for this mount type not something name
         f"overlay-options=lowerdir={lowerdir}:upperdir={upperdir}:workdir={workdir}"
     )
      
@@ -174,27 +181,66 @@ def create_contributor_session(owner_username, contributor_username, project_nam
         "-p", "7681",
         IMAGE_NAME
     ]
-    print(f"Executing command: {' '.join(command)}")
-    subprocess.run(command, check=True)
+    # subprocess.run(command, check=True)
 
-    time.sleep(2)
+    # time.sleep(2)
      
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    # result = subprocess.run(command, check=True, capture_output=True, text=True)
      
     #result = subprocess.run(["docker", "port", container_name, "7681", cont],                           capture_output=True, text=True,check=True)
     
-    container_id = result.stdout.strip()
+    container_id = None
 
-    container = docker_client.containers.get(container_id)
+    try:
+        print(f"Executing command: {' '.join(command)}")
 
-    track_session(container)
+        run_result = subprocess.run(command, check=True, capture_output=True, text=True)
+        container_id = run_result.stdout.strip()
+        print(f"Container '{container_name}' started successfully with ID : {container_id[:8]}")
 
-    print(f"Contributor container '{container_name}' started successfully.")
-    track_session()
-    host_port = result.stdout.strip().split(":")[-1]
-    session_url = f"http://127.0.0.1:{host_port}"
+        container = docker_client.containers.get(container_id)
 
-    return {"session_url": session_url, "contribution_id": contribution_id, "container_name": container_name}
+        
+
+        # output is like 0.0.0.0:6373
+        host_port = container.attrs["NetworkSettings"]["Ports"]["7681/tcp"][0]["HostPort"]  #port_result.stdout.strip().split(":")[-1]
+
+
+        if not host_port:
+            raise RuntimeError("Failed to retrive host port for the container.")
+
+        session_url = f"http://127.0.0.1:{host_port}"      
+
+    # container_id = result.stdout.strip()
+
+        container = docker_client.containers.get(container_id)
+
+        track_session(container)
+        print(f"Contributor container '{container_name}' started successfully.")
+        return {"session_url": session_url, "contribution_id": contribution_id, "container_name": container_name}
+    except subprocess.CalledProcessError as e:
+        print(f" Error creating container session: {e.stderr}")
+
+        db.session.rollback()
+        contribution_to_delete = Contribution.query.get(contribution_id)
+        if contribution_to_delete:
+            db.session.delete(contribution_to_delete)
+            db.session.commit()
+        print("Something went wrong! I know very helpful you won't know unless you know technopathy git gud!!")
+        return None
+    except Exception as e:
+        print(f"Something went wrong: {e}")
+
+        if container_id:
+            print(f"Cleaning up container '{container_name}' due to and error")
+            container = docker_client.containers.get(container_id)
+            container.stop(1)
+        db.session.rollback()
+        return None
+    
+    # host_port = result.stdout.strip().split(":")[-1]
+    
+
 
 def merge_contribution(owner_dir, contribution_upperdir):
     for item in os.listdir(contribution_upperdir):
@@ -204,7 +250,7 @@ def merge_contribution(owner_dir, contribution_upperdir):
             shutil.copytree(s, d, dirs_exist_ok=True)
         else:
             shutil.copy2(s, d)
-        shutil.rmtree(contribution_upperdir)
+    shutil.rmtree(contribution_upperdir)
 
 def remove_contribution(contribution_upperdir):
     shutil.rmtree(contribution_upperdir)
@@ -290,7 +336,7 @@ def merge_contribution_endpoints():
 
 @app.route('/contributions/delete', methods=['DELETE'])
 def remove_contribution_endpoints():
-    data = request.get_json or {}
+    data = request.get_json() or {}
     contribution_id = data.get('contribution_id')
 
     contribution = Contribution.query.filter_by(id=contribution_id).first() # Searching the db
@@ -478,7 +524,7 @@ def create_session(username = None):
 
             full_target_path = os.path.join(base_playground_path, target_path.strip('/'))
  
-            if not full_target_path.startswith(os.path.abspath(base_playground_path)):
+            if not os.path.abspath(full_target_path).startswith(base_playground_path):
                 return jsonify({"error": "Invalid path specified"}), 400
 
             directory = Directory.query.filter_by(path=full_target_path).first()
@@ -494,7 +540,7 @@ def create_session(username = None):
                 # The user is a contributor
                 owner_username = directory.owner.username
                 project_name = os.path.basename(target_path)
-                result = create_contributor_session(owner_username, username, project_name)
+                result = create_contributor_session(owner_username, username, project_name, directory)
                 return jsonify(result)
 
 
