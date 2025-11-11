@@ -1,6 +1,6 @@
 import os
 import subprocess
-import thread
+import threading
 import time
 from datetime import datetime, timezone, timedelta
 import logging as log
@@ -17,7 +17,7 @@ from flask_sqlalchemy import SQLAlchemy
 
     
 # Path to the shared "World" directory on host machine
-BASE_PLAYGROUND_PATH = 'srv/playground'
+BASE_PLAYGROUND_PATH = '/srv/playground'
 
 # Name of the docker image we will be using.
 DOCKER_IMAGE_NAME = 'chaospine:1.0.0'
@@ -26,7 +26,7 @@ DOCKER_IMAGE_NAME = 'chaospine:1.0.0'
 UTILITY_USER_SCRIPT = 'path/to/user/script'
 
 # database configuration
-SQLALCHEMY_DB_PATH = 'sqlit:///memory.db'
+SQLALCHEMY_DB_PATH = 'sqlite:///memory.db'
 SQLALCHEMY_TRACK_MODIFICATION = False
 
 # Garbage collector configuration.
@@ -38,7 +38,7 @@ DOCKER = docker.from_env()
 
 # Logging configuration
 log.basicConfig(
-    level=logging.info,  # or DEBUG, WARNING, ERROR, CRITICAL
+    level=logging.INFO,  # or DEBUG, WARNING, ERROR, CRITICAL
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename='app.log',  # optional: writes logs to a file
     filemode='a'         # append mode
@@ -46,17 +46,18 @@ log.basicConfig(
 
 # Port configuration
 PORT_BEING_USED = '7681/tcp'
-level=logging.INFO,  # or DEBUG, WARNING, ERROR, CRITICAL
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename='app.log',  # optional: writes logs to a file
-    filemode='a'         # append mode
+
 # ----------------------------------------------
 # 2. DATABASE MODEL
 # ----------------------------------------------
 # Defines the database schema of the application
 # ----------------------------------------------
 
-db = SQLAlchemy()
+# Define the app and initiate the DB
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = False
+app.config['SQLALCHEMY_TRACK_MODIFICATION'] = False
+db = SQLAlchemy(app)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key = True)
@@ -116,18 +117,21 @@ class UserManager:
             else:
                     log.info(f"Container for {self.userhash} is already running....")
         except docker.errors.NotFound:
-            log.info(f"No container found for {self.username}. Creating a new one...")
+            log.info(f"No container found for {self.userhash}. Creating a new one...")
             DOCKER.containers.run(
                 DOCKER_IMAGE_NAME,
                 detach=True,
                 name=container_name,
-                volumes={volume_name:{'bind':f'/home/{userhash}', 'mode':'rw'},
+                volumes={volume_name:{'bind':f'/home/{self.userhash}', 'mode':'rw'},
                          BASE_PLAYGROUND_PATH:{'bind':'/global/','mode':'rw'}},
                 ports={PORT_BEING_USED: None},
                 working_dir=f'/home/{self.userhash}',
                 stdin_open=True,
                 tty=True
             )
+            
+            container = DOCKER.containers.get(container_name)
+
 
         # TODO: Will need to write code for tracking the container here.
         # TODO: Will need to write the tarck_session(container) function
