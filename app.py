@@ -4,6 +4,7 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 import logging as log
+import hashlib
 
 import docker
 from flask import Flask, jsonify, request
@@ -55,7 +56,7 @@ PORT_BEING_USED = '7681/tcp'
 
 # Define the app and initiate the DB
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DB_PATH
 app.config['SQLALCHEMY_TRACK_MODIFICATION'] = False
 db = SQLAlchemy(app)
 
@@ -129,13 +130,73 @@ class UserManager:
                 stdin_open=True,
                 tty=True
             )
-            
             container = DOCKER.containers.get(container_name)
-
-
+        
+        except Exception as e:
+            log.error(f"{e}")
         # TODO: Will need to write code for tracking the container here.
         # TODO: Will need to write the tarck_session(container) function
 
         host_port = container.ports[PORT_BEING_USED][0]['HostPort']
         return {"session_url":f"http://127.0.0.1:{host_port}", "container_name":container_name}
+
+
+class ClaimDirectory:
+    def __init__(self, userhash):
+        self.userhash = userhash
+    
+    def claim_directory(self):
+        
+        user_base = os.path.join(BASE_PLAYGROUND_PATH, self.userhash)
+
+        os.makedirs(user_base, exist_ok=True)
+
+        try:
+            uid = pwd.getpwnam(self.userhash).pw_uid
+            gid = grp.getgrnam(self.userhash).gr_uid
+            os.chown(user_base, uid, gid)
+            os.chmod(user_base, 0o740)
+        except KeyError:
+            log.error("Key error happend inside the ClaimDirectory class")
+        except PermissionError:
+            log.error("permissionError happened")
+            log.error("App is not running as sudo or don't have enough previlage to make user and such")
+        except Exception as e:
+            log.error(f"Error: {e}")
+        
+        return user_base
+
+
+@app.route('/status')
+def status():
+    return jsonify({"status": "ok"})
+
+@app.route('/session', methods=['POST'])
+def create_session(username = None):
+    log.info("Running the session endpoint")
+    
+    data = request.get_json() or {}
+    
+    try:
+        if username == None:
+            username = data.get('username')
+
+    if not username:
+        return jsonify({"Error": "Username is rewuired.."}), 400
+
+    userhash = str(int(hashlib.sha256(username.encode('utf-8')).hexdigest(), 16) % 10**8)
+    
+    new_user = User(username=username,userhash=userhash)
+    db.session.add(new_user)
+    db.session.commit()
+
+
+    project_dir = ClaimDirectory(userhash).claim_directory()
+    new_project = Project(path=project_dir)
+
+    result = UserManager.starts_user_session(userhash)
+
+    return jsonify(result)
+
+    
 
