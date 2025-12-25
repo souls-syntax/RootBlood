@@ -4,7 +4,7 @@
 ![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![Status](https://img.shields.io/badge/status-v2%20Refactor%20(WIP)-brightgreen.svg)
 
-An open-source platform for creating persistent, secure, and multi-tenant "Linux MMO" development environments, accessible entirely from a web browser.
+An open-source platform for creating persistent, secure, and multi-tenant development environments, accessible entirely from a web browser.
 
 ---
 
